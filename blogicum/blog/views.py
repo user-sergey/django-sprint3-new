@@ -1,39 +1,45 @@
-from django.http import HttpResponseNotFound
 from django.shortcuts import get_object_or_404, render
+from django.utils import timezone
 
 from blog.models import Category, Post
 
 NUMBER_OF_POSTS = 5
 
 
+def get_published_posts(posts=None):
+    if posts is None:
+        posts = Post.objects.all()
+
+    return posts.filter(
+        is_published__exact=True,
+        category__is_published__exact=True,
+        pub_date__lte=timezone.now()
+    )
+
+
 def index(request):
-    context = {
-        'post_list': Post.get_published()[:NUMBER_OF_POSTS],
-    }
-    template_name = 'blog/index.html'
-    return render(request, template_name, context)
+    return render(
+        request,
+        'blog/index.html',
+        {'post_list': get_published_posts()[:NUMBER_OF_POSTS]}
+    )
 
 
-def post_detail(request, id):
-    template_name = 'blog/detail.html'
-    post = get_object_or_404(Post.get_published(), id=id)
-    try:
-        context = {
-            'post': post,
-        }
-        return render(request, template_name, context)
-    except IndexError:
-        return HttpResponseNotFound('<h1>404 Not Found</h1>')
+def post_detail(request, post_id):
+    post = get_object_or_404(get_published_posts(), id=post_id)
+    return render(request, 'blog/detail.html', {'post': post})
 
 
 def category_posts(request, category_slug):
-    template_name = 'blog/category.html'
     category = get_object_or_404(
-        Category.objects.filter(is_published__exact=True),
+        Category,
+        is_published__exact=True,
         slug=category_slug
     )
-    context = {
-        'post_list': Post.get_published().filter(category=category),
-        'category': category,
-    }
-    return render(request, template_name, context)
+    posts_of_category = category.posts.all()
+    published_posts = get_published_posts(posts=posts_of_category)
+    return render(
+        request,
+        'blog/category.html',
+        {'post_list': published_posts, 'category': category}
+    )

@@ -1,13 +1,18 @@
 from django.contrib.auth import get_user_model
 from django.db import models
-from django.utils import timezone
 
 MAX_LENGTH = 256
+MAX_PREVIEW_LENGTH = 60
 
 User = get_user_model()
 
 
-class BaseModel(models.Model):
+class PublishedModel(models.Model):
+    is_published = models.BooleanField(
+        default=True,
+        verbose_name='Опубликовано',
+        help_text='Снимите галочку, чтобы скрыть публикацию.'
+    )
     created_at = models.DateTimeField(
         auto_now_add=True,
         verbose_name='Добавлено'
@@ -18,94 +23,85 @@ class BaseModel(models.Model):
         verbose_name = 'базовая сущность'
         verbose_name_plural = 'Базовые сущности'
 
+    def __str__(self):
+        if hasattr(self, 'title'):
+            text = self.title
+        elif hasattr(self, 'name'):
+            text = self.name
+        else:
+            text = 'Без названия'
 
-class Category(BaseModel):
+        abbreviated_text = (
+            text[:MAX_PREVIEW_LENGTH] + '...'
+            if len(text) > MAX_PREVIEW_LENGTH
+            else text
+        )
+        return f'{self.pk}.\u00A0{abbreviated_text}'
+
+
+class Category(PublishedModel):
     title = models.CharField(max_length=MAX_LENGTH, verbose_name='Заголовок')
     description = models.TextField(verbose_name='Описание')
     slug = models.SlugField(
         unique=True,
         verbose_name='Идентификатор',
         help_text='Идентификатор страницы для URL; '
-        'разрешены символы латиницы, цифры, дефис и подчёркивание.'
-    )
-    is_published = models.BooleanField(
-        default=True,
-        verbose_name='Опубликовано',
-        help_text='Снимите галочку, чтобы скрыть публикацию.'
+                  'разрешены символы латиницы, цифры, дефис и подчёркивание.'
     )
 
-    class Meta(BaseModel.Meta):
+    class Meta(PublishedModel.Meta):
         verbose_name = 'категория'
         verbose_name_plural = 'Категории'
 
-    def __str__(self):
-        return self.title
 
+class Location(PublishedModel):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._meta.get_field('is_published').help_text = (
+            'Снимите галочку, чтобы скрыть местоположение.'
+        )
 
-class Location(BaseModel):
     name = models.CharField(
         max_length=MAX_LENGTH,
         verbose_name='Название места'
     )
-    is_published = models.BooleanField(
-        default=True,
-        verbose_name='Опубликовано',
-        help_text='Снимите галочку, чтобы скрыть местоположение.'
-    )
 
-    class Meta(BaseModel.Meta):
+    class Meta(PublishedModel.Meta):
         verbose_name = 'местоположение'
         verbose_name_plural = 'Местоположения'
 
-    def __str__(self):
-        return self.name
 
-
-class Post(BaseModel):
+class Post(PublishedModel):
     title = models.CharField(max_length=MAX_LENGTH, verbose_name='Заголовок')
     text = models.TextField(verbose_name='Текст')
     pub_date = models.DateTimeField(
         verbose_name='Дата и время публикации',
         help_text='Если установить дату и время в будущем — '
-        'можно делать отложенные публикации.'
+                  'можно делать отложенные публикации.'
     )
     author = models.ForeignKey(
         User,
         on_delete=models.CASCADE,
-        verbose_name='Автор публикации'
+        verbose_name='Автор публикации',
+        related_name='posts'
     )
     location = models.ForeignKey(
         Location,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        verbose_name='Местоположение'
+        verbose_name='Местоположение',
+        related_name='posts'
     )
     category = models.ForeignKey(
         Category,
         on_delete=models.SET_NULL,
         null=True,
-        blank=False,
-        verbose_name='Категория'
+        verbose_name='Категория',
+        related_name='posts'
     )
-    is_published = models.BooleanField(
-        default=True,
-        verbose_name='Опубликовано',
-        help_text='Снимите галочку, чтобы скрыть публикацию.'
-    )
-
-    @classmethod
-    def get_published(cls):
-        return cls.objects.filter(
-            is_published__exact=True,
-            category__is_published__exact=True,
-            pub_date__lte=timezone.now()
-        )
 
     class Meta:
         ordering = ('-pub_date',)
         verbose_name = 'публикация'
         verbose_name_plural = 'Публикации'
-
-    def __str__(self):
-        return self.title
